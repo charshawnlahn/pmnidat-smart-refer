@@ -1,15 +1,3 @@
-Project: PMNIDAT 062 Smart Portal (D/C Transfer)
-Website Requirements:
-1. Layout Structure:
-   - Row 1: Step 1 (IPD) contains 4 input boxes aligned horizontally.
-   - Row 2: Step 2 (Assessment) contains 1 large input box.
-   - Row 3: Step 3 (Registration) contains 4 input boxes aligned horizontally.
-2. Core Logic:
-   - Extraction: Extract data from raw text into structured format.
-   - ICD-10 Rule: Remove decimal points and join characters (e.g., F112, N302).
-   - Medication Rule: Extract Home-Med, convert to UPPERCASE, and include administration details.
-   - LOS Rule: Sum the numbers from Detox and Rehab fields.
-   - Progress Summary: Synthesize clinical data into 3 sections: Presentation, Current Status, and Precautions.
-3. Document Output:
-   - Generate a downloadable report with Font Size 13.
-   - Use placeholders: {{NAME}}, {{HN}}, {{DX}}, {{MEDS}}, {{LOS}}, {{PROGRESS}}.
+streamlit
+google-generativeai
+python-docx

@@ -29,7 +29,7 @@ def fill_pmnidat_doc(data):
                     paragraph.text = paragraph.text.replace(key, value)
                     
                     # 2. ตั้งค่าชิดขวา และ ป้องกันการยืดตัว (ไม่ใช้ Distributed)
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT 
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT 
                     
                     # 3. บังคับฟอนต์ขนาด 13 ตามมาตรฐานสถาบันฯ
                     for run in paragraph.runs:

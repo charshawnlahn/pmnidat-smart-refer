@@ -7,7 +7,7 @@ import re
 import json
 
 # --- 1. ตั้งค่าระบบหลังบ้านและ AI (Gemini 3 Flash Preview) ---
-API_KEY = "AIzaSyCeLlttCAwHuTLhkqCwAxTUZ-orIMznYT8"
+API_KEY = "AIzaSyBuuIatmiDquVtAxz6jEEIMRhxUf0bF8Iw"
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
@@ -140,6 +140,7 @@ if st.button("🚀 สกัดข้อมูลและสังเครา�
                 st.download_button("💾 ดาวน์โหลดแบบฟอร์ม 062 (ฟอนต์ 13) ฉบับสมบูรณ์", word_file, f"Refer_{json_data.get('hn','062')}.docx")
         except Exception as e:
             st.error(f"ระบบขัดข้อง: {e}")
+
 
 
 

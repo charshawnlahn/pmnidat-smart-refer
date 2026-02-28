@@ -1,6 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
-from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 import io
 import re
@@ -20,9 +20,13 @@ def fill_pmnidat_doc(data):
         def apply_style_and_replace(paragraph):
             for key, value in mapping.items():
                 if key in paragraph.text:
-                    # แทนที่ข้อความ (รองรับ \n สำหรับการเคาะบรรทัด)
+                    # 1. แทนที่ข้อความเดิม
                     paragraph.text = paragraph.text.replace(key, value)
-                    # บังคับฟอนต์ขนาด 13 ตามมาตรฐานสถาบันฯ
+                    
+                    # 2. ตั้งค่าชิดขวา และ ป้องกันการยืดตัว (ไม่ใช้ Distributed)
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT 
+                    
+                    # 3. บังคับฟอนต์ขนาด 13 ตามมาตรฐานสถาบันฯ
                     for run in paragraph.runs:
                         run.font.size = Pt(13)
 
@@ -140,6 +144,7 @@ if st.button("🚀 สกัดข้อมูลและสังเครา�
                 st.download_button("💾 ดาวน์โหลดแบบฟอร์ม 062 (ฟอนต์ 13) ฉบับสมบูรณ์", word_file, f"Refer_{json_data.get('hn','062')}.docx")
         except Exception as e:
             st.error(f"ระบบขัดข้อง: {e}")
+
 
 
 

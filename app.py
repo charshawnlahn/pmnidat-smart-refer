@@ -1,7 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx import Document  # <--- ตรวจสอบบรรทัดนี้ครับ ตัว D ต้องเป็นตัวใหญ่
 from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import re
 import json
@@ -148,6 +149,7 @@ if st.button("🚀 สกัดข้อมูลและสังเครา�
                 st.download_button("💾 ดาวน์โหลดแบบฟอร์ม 062 (ฟอนต์ 13) ฉบับสมบูรณ์", word_file, f"Refer_{json_data.get('hn','062')}.docx")
         except Exception as e:
             st.error(f"ระบบขัดข้อง: {e}")
+
 
 
 

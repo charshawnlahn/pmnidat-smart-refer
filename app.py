@@ -7,8 +7,12 @@ import re
 import json
 
 # --- 1. ตั้งค่าระบบหลังบ้านและ AI (Gemini 3 Flash Preview) ---
-API_KEY = "AIzaSyBuuIatmiDquVtAxz6jEEIMRhxUf0bF8Iw"
-genai.configure(api_key=API_KEY)
+# ใช้คำสั่งดึงค่าจาก Secrets แทน
+if "GEMINI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
+else:
+    st.error("❌ ไม่พบรหัส GEMINI_API_KEY ในระบบ Secrets ของ Streamlit")
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
 # --- 2. ฟังก์ชันจัดการไฟล์ Word (ฟอนต์ 13 + รองรับการเคาะบรรทัด) ---
@@ -144,6 +148,7 @@ if st.button("🚀 สกัดข้อมูลและสังเครา�
                 st.download_button("💾 ดาวน์โหลดแบบฟอร์ม 062 (ฟอนต์ 13) ฉบับสมบูรณ์", word_file, f"Refer_{json_data.get('hn','062')}.docx")
         except Exception as e:
             st.error(f"ระบบขัดข้อง: {e}")
+
 
 
 

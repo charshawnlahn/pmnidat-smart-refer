@@ -69,7 +69,7 @@ def clear_all_data():
     st.rerun()
 
 st.title("🏥 PMNIDAT Smart Transfer")
-st.subheader("ผู้ช่วยพิมพ์ 'แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062)' โดยอัตโนมัติ (Master Version 3.32)")
+st.subheader("ผู้ช่วยพิมพ์ 'แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062)' โดยอัตโนมัติ (Version 3.32)")
 
 # --- 5. การออกแบบแถบเมนูด้านข้าง (Sidebar Manual & Controls) ---
 
@@ -145,7 +145,7 @@ with st.sidebar:
         
     st.divider()
     # แสดงสถานะระบบ (ไม่มี cite_start มากวนใจ)
-    st.success("PMNIDAT Smart Transfer Created by Dr.Charshawn Lahnwong (2026)")
+    st.success("PMNIDAT Smart Transfer (Version 3.32) | Created by Dr.Charshawn Lahnwong (1 March 2026)")
 
 # --- สิ้นสุดส่วนที่ 2 ---
 
@@ -385,6 +385,7 @@ st.info("""
     * ข้อมูลจะถูกลบทิ้งทันทีเมื่อมีการรีเฟรชหน้าจอ (Refresh) โปรดดาวน์โหลดไฟล์ให้เรียบร้อยก่อนปิดระบบ
     * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง [cite: 107-109]
     """)
+
 
 
 

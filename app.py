@@ -69,7 +69,7 @@ def clear_all_data():
     st.rerun()
 
 st.title("🏥 PMNIDAT Smart Transfer")
-st.subheader("ระบบ AI ผู้ช่วยพิมพ์ แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062) อัตโนมัติ (Master Version 3.32)")
+st.subheader("ผู้ช่วยพิมพ์ "แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062)" โดยอัตโนมัติ (Master Version 3.32)")
 
 # --- 5. การออกแบบแถบเมนูด้านข้าง (Sidebar Manual & Controls) ---
 
@@ -380,6 +380,7 @@ st.info("""
     * ข้อมูลจะถูกลบทิ้งทันทีเมื่อมีการรีเฟรชหน้าจอ (Refresh) โปรดดาวน์โหลดไฟล์ให้เรียบร้อยก่อนปิดระบบ
     * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง [cite: 107-109]
     """)
+
 
 
 

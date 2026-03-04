@@ -246,7 +246,7 @@ with s3_cols[3]:
 
 # --- 7. ส่วนประมวลผลอัจฉริยะ (Advanced Search, Extract & Audit Logic) ---
 
-if st.button("🚀 ประมวลผลและสกัดข้อมูลด้วย Gemini 3 Flash", use_container_width=True):
+if st.button("🚀 กดเพื่อประมวลผลและสกัดข้อมูลด้วย Gemini 3 Flash", use_container_width=True):
     # รวบรวมข้อมูลดิบจาก 9 ช่องที่กรอกไว้ในส่วนที่ 3 [cite: 102, 104, 106]
     all_raw_data = f"""
     --- GROUP 1: IPD RAW DATA ---
@@ -366,11 +366,11 @@ if "extracted_json_data" in st.session_state and st.session_state.extracted_json
         
         st.divider()
         st.balloons() # เฉลิมฉลองความสำเร็จในการประมวลผล
-        st.success("🎉 ระบบสกัดข้อมูลและจัดทำเอกสาร 062 ฉบับสมบูรณ์เรียบร้อยแล้ว!")
+        st.success("🎉 ระบบสกัดข้อมูลและจัดทำเอกสาร PMNIDAT 062 ฉบับสมบูรณ์เรียบร้อยแล้ว!")
         
         # ปุ่มดาวน์โหลดไฟล์ฉบับ Final ที่พร้อมส่งต่อ [cite: 107-109]
         st.download_button(
-            label="💾 ดาวน์โหลดใบส่งต่อ 062 (จัดรูปแบบฟอนต์ 13 + ชิดซ้าย)",
+            label="💾 ดาวน์โหลดไฟล์ 'แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062).docx' ",
             data=word_file_final,
             file_name=f"Refer_{st.session_state.extracted_json_data.get('name', '062')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -380,11 +380,12 @@ if "extracted_json_data" in st.session_state and st.session_state.extracted_json
 # --- 10. มาตรการรักษาความปลอดภัย (PDPA Footer) ---
 st.divider()
 st.info("""
-    **ประกาศมาตรการรักษาความปลอดภัยข้อมูล (PDPA Compliance):**
-    * ระบบ PMNIDAT Smart Refer ประมวลผลแบบ Real-time และ **ไม่มีการจัดเก็บข้อมูลผู้ป่วยถาวร** [cite: 112]
+    **มาตรการรักษาความปลอดภัยของข้อมูลคนไข้ (PDPA Compliance):**
+    * ระบบ PMNIDAT Smart Refer ประมวลผลแบบ Real-time และ **ไม่มีการจัดเก็บข้อมูลผู้ป่วยถาวร** 
     * ข้อมูลจะถูกลบทิ้งทันทีเมื่อมีการรีเฟรชหน้าจอ (Refresh) โปรดดาวน์โหลดไฟล์ให้เรียบร้อยก่อนปิดระบบ
-    * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง [cite: 107-109]
+    * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง 
     """)
+
 
 
 

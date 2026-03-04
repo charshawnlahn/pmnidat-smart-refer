@@ -8,18 +8,18 @@ import re
 import json
 import requests
 
-# --- 1. การดึงคีย์และการตั้งค่า Client (2026 Updated Syntax) ---
+# --- 1. การดึงคีย์และการตั้งค่า Client (2026 Standard) ---
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     APPS_SCRIPT_URL = st.secrets["APPS_SCRIPT_URL"]
     
-    # สร้าง Client ด้วย google-genai SDK รุ่นล่าสุด
     client = genai.Client(api_key=API_KEY)
     
-    # ระบุรุ่นโมเดล Gemini 3 Flash ตาม Paid Tier 1 ของคุณหมอ
-    MODEL_ID = "gemini-3-flash" 
+    # เปลี่ยนจาก gemini-3-flash เป็นชื่อ ID มาตรฐานที่ระบบรองรับ
+    # โดยปกติจะเป็น gemini-2.0-flash หรือ gemini-1.5-flash ครับ
+    MODEL_ID = "gemini-2.0-flash" 
 except Exception as e:
-    st.error("❌ ระบบตรวจไม่พบรหัสความปลอดภัยใน Secrets กรุณาตรวจสอบการตั้งค่า")
+    st.error(f"❌ ระบบเชื่อมต่อผิดพลาด: {e}")
     st.stop()
 
 # --- 2. ฟังก์ชันบันทึก Log Book ---
@@ -161,3 +161,4 @@ st.info("""
     * ระบบ PMNIDAT Smart D/C Transfer ไม่มีการจัดเก็บหรือสำรองข้อมูลผู้ป่วยไว้ในเซิร์ฟเวอร์
     * ข้อมูลจะสูญหายทันทีหากมีการรีเฟรชหน้าจอ โปรดบันทึกไฟล์ให้เรียบร้อยก่อนออกจากระบบทุกครั้ง
     """)
+

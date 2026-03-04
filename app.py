@@ -68,8 +68,8 @@ def clear_all_data():
         st.session_state[key] = ""
     st.rerun()
 
-st.title("🏥 PMNIDAT Smart D/C Transfer")
-st.subheader("ระบบสร้างไฟล์ใบส่งต่ออัตโนมัติ (Master Version 3.32)")
+st.title("🏥 PMNIDAT Smart Transfer")
+st.subheader("ระบบ AI ผู้ช่วยพิมพ์ "แบบบันทึกข้อมูลเพื่อส่งต่อ [PMNIDAT 062]" โดยอัตโนมัติ (Master Version 3.32)")
 
 # --- 5. การออกแบบแถบเมนูด้านข้าง (Sidebar Manual & Controls) ---
 
@@ -145,7 +145,7 @@ with st.sidebar:
         
     st.divider()
     # แสดงสถานะระบบ (ไม่มี cite_start มากวนใจ)
-    st.success("💡 AI จะกลั่นกรองและวิเคราะห์ข้อมูล แล้วเติมข้อมูลลงไปในแบบฟอร์ม PMNIDAT 062 โดยอัตโนมัติ")
+    st.success("💡 AI จะวิเคราะห์ข้อมูลดิบที่ป้อน เพื่อนำข้อมูลไปกรอกลงแบบฟอร์ม PMNIDAT 062 โดยอัตโนมัติ")
 
 # --- สิ้นสุดส่วนที่ 2 ---
 
@@ -380,6 +380,7 @@ st.info("""
     * ข้อมูลจะถูกลบทิ้งทันทีเมื่อมีการรีเฟรชหน้าจอ (Refresh) โปรดดาวน์โหลดไฟล์ให้เรียบร้อยก่อนปิดระบบ
     * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง [cite: 107-109]
     """)
+
 
 
 

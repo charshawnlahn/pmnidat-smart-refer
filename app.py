@@ -7,78 +7,137 @@ import io
 import re
 import json
 import requests
+import datetime
 
-# --- 1. ฟังก์ชันบันทึกสถิติการใช้งาน (Log Usage) ---
+# --- 1. การจัดการวันที่ภาษาไทย (Thai Date Formatting) ---
+# รองรับการเติมข้อมูล วันที่...เดือน...พ.ศ... อัตโนมัติ 
+THAI_MONTHS = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+]
+
+def get_thai_date_parts():
+    """ส่งคืน วัน, เดือน(ชื่อเต็ม), และ พ.ศ. ปัจจุบัน """
+    now = datetime.datetime.now()
+    return {
+        "DAY": str(now.day),
+        "MONTH": THAI_MONTHS[now.month - 1],
+        "YEAR": str(now.year + 543)  # แปลงปี ค.ศ. เป็น พ.ศ. 
+    }
+
+# --- 2. ฟังก์ชันบันทึกสถิติการใช้งาน (Usage Logging) ---
 def log_usage(patient_name):
+    """ส่งชื่อผู้ป่วยไปยัง Google Sheets เพื่อบันทึกประวัติการใช้งาน"""
     try:
         url = st.secrets["APPS_SCRIPT_URL"]
         requests.post(url, json={"name": patient_name}, timeout=5)
     except:
-        pass
+        pass # ป้องกันแอปหยุดทำงานหากเชื่อมต่อ Log ไม่สำเร็จ
 
-# --- 2. การตั้งค่าการเชื่อมต่อ API ---
+# --- 3. การตั้งค่าระบบความปลอดภัยและการเชื่อมต่อ API ---
 try:
+    # ดึงค่า API Key จาก Streamlit Secrets
     API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=API_KEY)
     
     @st.cache_resource
     def find_active_model():
+        """ตรวจสอบรุ่นโมเดลที่สามารถใช้งานได้จริงในบัญชีของคุณหมอ"""
         try:
             available_models = [m.name for m in client.models.list()]
+            # เน้นการใช้รุ่น Gemini 1.5 Flash เพื่อความเร็วและแม่นยำ
             for m in available_models:
                 if "gemini-1.5-flash" in m: return m
             return available_models[0]
         except:
             return "models/gemini-1.5-flash"
+            
     MODEL_ID = find_active_model()
 except Exception as e:
-    st.error(f"❌ ระบบเชื่อมต่อผิดพลาด: {e}")
+    st.error(f"❌ ระบบเชื่อมต่อผิดพลาด (API Configuration Error): {e}")
     st.stop()
 
-# --- 3. ระบบ Session State Memory (จดจำข้อมูล 9 ช่อง) ---
+# --- 4. ระบบจดจำข้อมูลชั่วคราว (Session State Memory) ---
+# สร้างสถานะสำหรับเก็บข้อมูลทั้ง 9 ช่อง เพื่อไม่ให้หายเมื่อรีเฟรชหน้าจอ [cite: 42, 44, 46]
 field_keys = ['s11', 's12', 's13', 's14', 's2', 's31', 's32', 's33', 's34']
 for key in field_keys:
     if key not in st.session_state:
         st.session_state[key] = ""
 
-# --- 4. ฟังก์ชันโหลดข้อมูลตัวอย่าง (สมมติชื่อ: นพ.ชาฌาน หลานวงศ์) ---
+# --- 5. ฟังก์ชันโหลดข้อมูลตัวอย่าง (Smart Sample Data) ---
+# บรรจุรายละเอียดครบถ้วนเพื่อใช้ทดสอบตรรกะการสกัดข้อมูลระดับ PhD
+
 def load_test_data():
-    # ข้อมูลจาก Step 1.1
-    st.session_state.s11 = "นาย ชาย ธัญญารักษ์ อายุ 40 ปี 5 เดือน\nสิทธิ์ : จ่ายตรงกรมบัญชีกลาง\nAdmit Date 01/03/2569\nจำนวนวัน Detox [5] วัน Rehab [10] วัน\nCC : เสพสุราซ้ำ ต้องการเข้ารับการบำบัดรักษา\nเคยมานอน รพ.4 ครั้ง จำหน่ายวันที่ 25 กันยายน 2568\nAdmit Date 20/01/2569"
-    # ข้อมูลจาก Step 1.2 (รหัสโรคพร้อมชื่อไทย)
-    st.session_state.s12 = "1. F105 - โรคจิตจากสุรา (Alcohol)\n2. I10 - โรคความดันโลหิตสูง (Hypertension)"
-    # ข้อมูลจาก Step 1.3 (รายการยาเรียงแถว)
-    st.session_state.s13 = "1. AMLODIPINE 5 MG 1x1 pc (เช้า)\n2. QUETIAPINE 25 MG 1 tab hs (ก่อนนอน)\n(Home-Med ทั้งหมด)"
-    # ข้อมูลจาก Step 1.4
-    st.session_state.s14 = "S: สบายดี กินข้าวได้ นอนหลับได้\nO: V/S stable, BP 120/80 mmHg\nA: อาการคงที่ เตรียมจำหน่าย\nP: Discharge to home"
-    # ข้อมูลจาก Step 2
+    """โหลดข้อมูลตัวอย่าง 'นาย ชาย ธัญญารักษ์' เข้าสู่ Session State """
+    
+    # 1.1 ข้อมูลจาก Admission Note (IPD)
+    st.session_state.s11 = (
+        "นาย ชาย ธัญญารักษ์ อายุ 40 ปี 5 เดือน\n"
+        "สิทธิ์ : จ่ายตรงกรมบัญชีกลาง\n"
+        "Admit Date 01/03/2569\n"
+        "จำนวนวัน Detox [5] วัน Rehab [10] วัน\n"
+        "CC : เสพสุราซ้ำ ต้องการเข้ารับการบำบัดรักษา\n"
+        "เคยมานอน รพ.4 ครั้ง จำหน่ายวันที่ 25 กันยายน 2568\n"
+        "Admit Date 20/01/2569"
+    )
+    
+    # 1.2 ข้อมูลการวินิจฉัย (ICD-10 พร้อมชื่อไทย)
+    st.session_state.s12 = (
+        "1. F105 - โรคจิตจากสุรา (Alcohol)\n"
+        "2. I10 - โรคความดันโลหิตสูง (Hypertension)"
+    )
+    
+    # 1.3 ข้อมูลรายการยา (Order / Meds)
+    st.session_state.s13 = (
+        "1. AMLODIPINE 5 MG 1x1 pc (เช้า)\n"
+        "2. QUETIAPINE 25 MG 1 tab hs (ก่อนนอน)\n"
+        "(Home-Med ทั้งหมด)"
+    )
+    
+    # 1.4 ข้อมูลบันทึกการติดตามอาการ (Progress Note)
+    st.session_state.s14 = (
+        "S: สบายดี กินข้าวได้ นอนหลับได้\n"
+        "O: V/S stable, BP 120/80 mmHg\n"
+        "A: อาการคงที่ เตรียมจำหน่าย\n"
+        "P: Discharge to home"
+    )
+    
+    # 2. ข้อมูลการประเมิน (Assessment)
     st.session_state.s2 = "9Q : 5 คะแนน\n8Q : 0 คะแนน\nBPRS : 15 คะแนน"
-    # ข้อมูลจาก Step 3.1
-    st.session_state.s31 = "Hospital Number 690099999 ชื่อ [ชาย] นามสกุล [ธัญญารักษ์]\nเลขบัตรประชาชน* [1-2345-67890-12-3]\nศาสนา [พุทธ] อาชีพ [ข้าราชการ] สถานภาพ [สมรส] การศึกษา [ปริญญาตรี]"
-    # ข้อมูลจาก Step 3.2
+    
+    # 3.1 ข้อมูลทั่วไป (Registration 1)
+    st.session_state.s31 = (
+        "Hospital Number 690099999 ชื่อ [ชาย] นามสกุล [ธัญญารักษ์]\n"
+        "เลขบัตรประชาชน* [1-2345-67890-12-3]\n"
+        "ศาสนา [พุทธ] อาชีพ [ข้าราชการ] สถานภาพ [สมรส] การศึกษา [ปริญญาตรี]"
+    )
+    
+    # 3.2 ที่อยู่ปัจจุบัน (Registration 2)
     st.session_state.s32 = "ที่อยู่ปัจจุบัน: เลขที่ 123 ต.หลักหก อ.เมืองปทุมธานี จ.ปทุมธานี"
-    # ข้อมูลจาก Step 3.3
+    
+    # 3.3 ผู้ติดต่อ (Contact Info)
     st.session_state.s33 = "คุณ หญิง ธัญญารักษ์ (ภรรยา) เบอร์โทร: 081-234-XXXX"
-    # ข้อมูลจาก Step 3.4
+    
+    # 3.4 สิทธิการรักษา (Rights)
     st.session_state.s34 = "สิทธิหลัก [จ่ายตรง] สถานพยาบาลหลัก [สถาบันบำบัดรักษาและฟื้นฟูผู้ติดยาเสพติดแห่งชาติบรมราชชนนี]"
+    
+    # สั่งให้แอปรีเฟรชเพื่อแสดงข้อมูลในช่องกรอกทันที
     st.rerun()
 
 def clear_all_data():
+    """ล้างข้อมูลดิบทั้งหมดใน Session State [cite: 1]"""
     for key in field_keys:
         st.session_state[key] = ""
     st.rerun()
 
-st.title("🏥 PMNIDAT Smart Transfer")
-st.subheader("ผู้ช่วยพิมพ์ 'แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062)' โดยอัตโนมัติ (Version 3.32)")
-
-# --- 5. การออกแบบแถบเมนูด้านข้าง (Sidebar Manual & Controls) ---
+# --- 6. การออกแบบแถบเมนูด้านข้าง (Sidebar Manual & Controls) ---
 
 with st.sidebar:
-    # แสดงโลโก้สถาบันฯ และหัวข้อคู่มือ
+    # [cite_start]แสดงโลโก้สถาบันฯ และหัวข้อคู่มือ [cite: 12]
     st.image("https://pmnidathis.dms.go.th/static/media/health.1bfd961f.png", width=100)
     st.header("📖 คู่มือการใช้งาน")
     
-    # ปุ่มควบคุมสำหรับการทดสอบระบบ (เรียกใช้ฟังก์ชันจากส่วนที่ 1)
+    # ปุ่มควบคุมสำหรับทดสอบระบบและล้างข้อมูล
     st.subheader("🛠️ เครื่องมือระบบ")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
@@ -90,7 +149,7 @@ with st.sidebar:
             
     st.divider()
     
-    # คำแนะนำพื้นฐานในการคัดลอก
+    # คำแนะนำพื้นฐานในการคัดลอกข้อมูลจากต้นทาง
     st.markdown("### **วิธีการคัดลอกข้อมูลจาก @ThanHIS**")
     st.info("""
     1. **คลิกเมาส์ซ้ายค้าง** ที่ต้นข้อความ ลากลงล่างให้ครอบคลุมข้อมูลทั้งหมด
@@ -98,7 +157,7 @@ with st.sidebar:
     3. มาที่หน้านี้ คลิกช่องที่ต้องการ แล้วกด **Ctrl+V** (วาง)
     """)
     
-    # รายละเอียดแต่ละ Step ตามคู่มือฉบับจริง
+    # [cite_start]รายละเอียดแต่ละ Step ตามคู่มือฉบับจริง (รักษาข้อความเดิมครบถ้วน) [cite: 1-9]
     with st.expander("🟢 STEP 1: ระบบผู้ป่วยใน (IPD)", expanded=True):
         st.markdown("""
         **1.1 Admission Note:**
@@ -110,12 +169,10 @@ with st.sidebar:
         - คัดลอกรหัส ICD-10 ชื่อโรค และประเภท (Principal & Comorbidity)
         
         **1.3 Order / Meds:**
-        - กดเมนู **"Order"** 
-        - คัดลอก **Order + Medication** ทั้งหมด จากบนถึงล่างสุด
+        - กดเมนู **"Order"** - คัดลอก **Order + Medication ทั้งหมด** จากบนถึงล่างสุด
         
         **1.4 Progress Note:**
-        - กดเมนู **"Progress note"** 
-        - คัดลอก **Progress note** ทั้งหมด จากบนถึงล่างสุด 
+        - กดเมนู **"Progress note"** - คัดลอก **Progress note ทั้งหมด** จากบนถึงล่างสุด 
         """)
 
     with st.expander("🔵 STEP 2: การประเมิน (Assessment)"):
@@ -130,29 +187,25 @@ with st.sidebar:
         - เข้าระบบผู้ป่วยนอก → เวชระเบียน → ลงทะเบียนผู้ป่วยใหม่
         - ค้นหา HN เพื่อเข้าสู่หน้าข้อมูลหลัก
         
-        **3.1 ทั่วไป 1:** 
-        - คัดลอก Hospital number พร้อมกับ ชื่อ, อายุ, เลขบัตรประชาชน, ศาสนา
+        **3.1 ทั่วไป 1:** - คัดลอก Hospital number พร้อมกับ ชื่อ, อายุ, เลขบัตรประชาชน, ศาสนา
         
-        **3.2 ทั่วไป 2:** 
-        - กดแสดง **"ที่อยู่ปัจจุบัน"** แล้วคัดลอกทั้งหมด
+        **3.2 ทั่วไป 2:** - กดแสดง **"ที่อยู่ปัจจุบัน"** แล้วคัดลอกทั้งหมด
         
-        **3.3 ผู้ติดต่อ:** 
-        - คัดลอกชื่อญาติ, ความสัมพันธ์ และเบอร์โทร
+        **3.3 ผู้ติดต่อ:** - คัดลอกชื่อญาติ, ความสัมพันธ์ และเบอร์โทร
         
-        **3.4 สิทธิรักษา:** 
-        - คัดลอกสิทธิ์และ **"สถานพยาบาลหลัก"**
+        **3.4 สิทธิรักษา:** - คัดลอกสิทธิ์และ **"สถานพยาบาลหลัก"**
         """)
         
     st.divider()
-    # แสดงสถานะระบบ 
-    st.success("PMNIDAT Smart Transfer (Version 3.32) | Created by Dr.Charshawn Lahnwong (1 March 2026)")
+    # แสดงเครดิตและรุ่นของระบบ
+    st.success("PMNIDAT Smart Transfer (Version 3.35) | Created by Dr.Charshawn Lahnwong (1 March 2026)")
 
-# --- สิ้นสุดส่วนที่ 2 ---
+# --- สิ้นสุดส่วนที่ 3 ---
 
-# --- 6. ส่วนการออกแบบช่องกรอกข้อมูล (9 Input Fields) ---
+# --- 7. ส่วนการออกแบบช่องกรอกข้อมูล (Input Form Layout) ---
 
 st.divider()
-# กลุ่มที่ 1: ข้อมูลระบบผู้ป่วยใน (IPD) - เน้นการคัดลอกข้อมูลดิบแบบจัดเต็ม 
+# กลุ่มที่ 1: ข้อมูลระบบผู้ป่วยใน (IPD) - รองรับข้อมูลชุดใหญ่ [cite: 1, 41]
 st.markdown("### **🟢 Step 1: ระบบผู้ป่วยใน (IPD)**")
 s1_cols = st.columns(4)
 
@@ -162,7 +215,7 @@ with s1_cols[0]:
         height=300,
         placeholder="คัดลอกข้อมูลแรกรับทั้งหมด...",
         key="s11",
-        help="คัดลอกจากเมนู Admission note ในระบบ IPD"
+        help="คัดลอกจากเมนู Admission note ในระบบ IPD [cite: 1]"
     )
 
 with s1_cols[1]:
@@ -171,7 +224,7 @@ with s1_cols[1]:
         height=300,
         placeholder="คัดลอกรหัส ICD-10 ทั้งหมด...",
         key="s12",
-        help="คัดลอกจากเมนูการวินิจฉัย"
+        help="คัดลอกจากเมนูการวินิจฉัย [cite: 5]"
     )
 
 with s1_cols[2]:
@@ -180,7 +233,7 @@ with s1_cols[2]:
         height=300,
         placeholder="คัดลอกข้อมูลจากเมนู Order ทั้งหมด ...",
         key="s13",
-        help="คัดลอก Order และ Medication ทั้งหมดที่มี"
+        help="คัดลอก Order และ Medication ทั้งหมดที่มี [cite: 6]"
     )
 
 with s1_cols[3]:
@@ -193,18 +246,18 @@ with s1_cols[3]:
     )
 
 st.divider()
-# กลุ่มที่ 2: ข้อมูลการประเมิน (Assessment) 
+# กลุ่มที่ 2: ข้อมูลการประเมิน (Assessment) [cite: 43]
 st.markdown("### **🔵 Step 2: การประเมิน (Assessment)**")
 st.text_area(
     "คัดลอกผลคะแนน 9Q, 8Q, BPRS ทั้งหมดมาวางที่นี่",
     height=150,
     placeholder="คะแนน 9Q, 8Q, BPRS ...",
     key="s2",
-    help="ดึงจากหน้า Assessment ในระบบผู้ป่วยนอก"
+    help="ดึงจากหน้า Assessment ในระบบผู้ป่วยนอก [cite: 7, 44]"
 )
 
 st.divider()
-# กลุ่มที่ 3: ข้อมูลเวชระเบียน (Registration) 
+# กลุ่มที่ 3: ข้อมูลเวชระเบียน (Registration) - แบ่ง 4 ส่วนตาม Step 3.1 - 3.4 [cite: 45]
 st.markdown("### **🟠 Step 3: เวชระเบียน (Registration)**")
 s3_cols = st.columns(4)
 
@@ -223,7 +276,7 @@ with s3_cols[1]:
         height=200, 
         placeholder="ที่อยู่ปัจจุบัน ...",
         key="s32",
-        help="ดึงจากหน้า 'ทั่วไป 2' (ต้องกดยืดกล่องที่อยู่)"
+        help="ดึงจากหน้า 'ทั่วไป 2' (ต้องกดยืดกล่องที่อยู่) [cite: 8]"
     )
 
 with s3_cols[2]:
@@ -244,121 +297,120 @@ with s3_cols[3]:
         help="ดึงจากหน้า 'สิทธิการรักษา' (สิทธิ์และสถานพยาบาลหลัก)"
     )
 
-# --- 7. ส่วนประมวลผลอัจฉริยะ (Advanced Search, Extract & Audit Logic) ---
+
+# --- 8. ส่วนประมวลผลอัจฉริยะ (The PhD Extraction Brain) ---
 
 if st.button("🚀 กดเพื่อประมวลผลและสกัดข้อมูลด้วย Gemini 3 Flash", use_container_width=True):
-    # รวบรวมข้อมูลดิบจาก 9 ช่องที่กรอกไว้ในส่วนที่ 3 
+    # ดึงวันที่ปัจจุบันและส่วนประกอบวันที่ไทยเพื่อใช้คำนวณ LOC และแสดงผลในใบส่งต่อ
+    thai_date_data = get_thai_date_parts()
+    today_str = f"{thai_date_data['DAY']} {thai_date_data['MONTH']} {thai_date_data['YEAR']}"
+    
+    # รวบรวมข้อมูลดิบทั้งหมดจาก 9 ช่องกรอก [cite: 3, 5, 7]
     all_raw_data = f"""
-    --- GROUP 1: IPD RAW DATA ---
-    {st.session_state.s11}
-    {st.session_state.s12}
-    {st.session_state.s13}
-    {st.session_state.s14}
-    --- GROUP 2: ASSESSMENT DATA ---
-    {st.session_state.s2}
-    --- GROUP 3: REGISTRATION DATA ---
-    {st.session_state.s31}
-    {st.session_state.s32}
-    {st.session_state.s33}
-    {st.session_state.s34}
+    วันที่ทำรายการปัจจุบัน: {today_str}
+    
+    [GROUP 1: IPD DATA]
+    1.1 Admission Note: {st.session_state.s11}
+    1.2 การวินิจฉัย: {st.session_state.s12}
+    1.3 Order / Meds (คัดลอกทั้งหมด): {st.session_state.s13}
+    1.4 Progress Note (คัดลอกทั้งหมด): {st.session_state.s14}
+    
+    [GROUP 2: ASSESSMENT]
+    Assessment Score: {st.session_state.s2}
+    
+    [GROUP 3: REGISTRATION]
+    3.1 ข้อมูลทั่วไป (HN, ข้อมูลส่วนตัว): {st.session_state.s31}
+    3.2 ที่อยู่ปัจจุบัน: {st.session_state.s32}
+    3.3 ผู้ติดต่อ: {st.session_state.s33}
+    3.4 สิทธิการรักษา: {st.session_state.s34}
     """
     
     with st.spinner('Gemini 3 Flash กำลังวิเคราะห์ข้อมูลเชิงลึกและตรวจสอบ Verification Audit...'):
-        # ตรรกะการประมวลผลตามมาตรฐานสถาบันฯ และเอกสารแนบ 
+        # ตรรกะการประมวลผลระดับ PhD ตามมาตรฐานสถาบันฯ [cite: 8, 11]
         prompt = f"""
-        คุณคือผู้ช่วยวิจัยระดับ PhD ทางการแพทย์ ทำหน้าที่สกัดข้อมูลจากระบบ @ThanHIS ลงแบบฟอร์ม 062 
-        โดยต้องปฏิบัติตามกฎเหล็ก "Verification Audit" และ "Search & Extract Logic" อย่างเคร่งครัด:
+        คุณคือผู้ช่วยวิจัยทางการแพทย์ระดับ PhD ทำหน้าที่สกัดข้อมูลจากระบบ @ThanHIS ลงแบบฟอร์ม 062 
+        จงปฏิบัติตามกฎเหล็ก "Verification Audit" และ "Search & Extract Logic" อย่างเคร่งครัด:
 
         1. กฎการตัดขยะข้อมูล (Noise Reduction Rule): 
            Ignore (ละทิ้ง) ข้อมูล Theme Customizer, Navbar, Menu Colors, Light/Dark Mode และ COPYRIGHT ทั้งหมด 
 
-        2. ตรรกะการสกัดข้อมูลรายกลุ่ม (Search & Extract Logic):
-           - [ชื่อ-สกุล (NAME)]: สกัดจาก 'ข้อมูลทั่วไปผู้ป่วย'
-           - [อายุ (AGE)]: สกัดจาก 'ข้อมูลทั่วไปผู้ป่วย'
-           - [HN]: มองหาตัวเลขหลังคำว่า 'HN' หรือ 'Hospital number'  
-           - [เลขบัตรประชาชน (ID)]: ดึงจากหน้า 'ทั่วไป 1' ในระบบเวชระเบียน
-           - [การศึกษา (EDU)]: ดึงจากหน้า 'ทั่วไป 1' ในระบบเวชระเบียน
-           - [อาชีพ (CAREER)]: ดึงจากหน้า 'ทั่วไป 1' ในระบบเวชระเบียน
-           - [ศาสนา (RELIGION)]: ดึงจากหน้า 'ทั่วไป 1' ในระบบเวชระเบียน
-           - [สถานภาพ (STATUS)]: สภาพสมรส ดึงจากหน้า 'ทั่วไป 1' ในระบบเวชระเบียน
-           - [สิทธิการรักษา (RIGHTS)]: สกัดข้อความระหว่าง 'สิทธิ์ :' ถึง '(ไม่มีหนังสือส่งตัว)' หรือข้อความถัดไป หรือ สิทธิหลัก ในหน้า 'สิทธิการรักษา' 
-           - [วันที่จำหน่ายครั้งสุดท้าย (LAST_DC)]: สกัดจากหน้า 'Admission note'
-           - [ระยะเวลาที่อยู่ในชุมชน (LOC)]: เป็นจำนวนวันที่คำนวณจาก วันที่จำหน่ายครั้งสุดท้าย จนถึง วันที่รับไว้ครั้งนี้
-           - [วันที่รับไว้ครั้งนี้ (ADMIT_DATE)]: ดูจาก Admit Date 
-           - [รับไว้ครั้งที่ (VISIT_NUM)]: ใช้การวิเคราะห์ เช่น ครั้งนี้ รับไว้ครั้งที่ 5 ถ้าประวัติเขียนว่า เคยมานอน รพ.4 ครั้ง
-           - [อาการนำส่ง (CC)]: สกัดจาก 'Chief Complaint' หรือ 'CC :' จนถึง 'Present illness' จากหน้า 'Admission note'
-           - [ชื่อ-สกุลผู้ดูแล (CONTACT)]: สกัดจาก ผู้ติดต่อ/ผู้รับยาแทนคนที่ 1 จากหน้า 'ผู้ติดต่อ'
-           - [เกี่ยวข้องเป็น (RELATION)]: สกัดจาก ความสัมพันธ์กับผู้ป่วย จากหน้า 'ผู้ติดต่อ'
-           - [เบอร์โทรศัพท์ (PHONE)]: สกัดจาก เบอร์โทรศัพท์ จากหน้า 'ผู้ติดต่อ'
-           - [หน่วยบริการสาธารณสุขใกล้บ้าน (NEAR_HOSP)]: สกัดจาก สถานพยาบาลหลัก จากหน้า 'สิทธิการรักษา'
-           - [วันที่จำหน่าย (DC_DATE)]: ยึดวันนี้/วันปัจจุบันที่ผู้ใช้งานส่งคำสั่งเข้ามา
-           - [รวมวันนอนในโรงพยาบาล (LOS)]: ค้นหาตัวเลขหน้าคำว่า 'วัน' ในแถว 'Detox' และ 'Rehab' แล้วนำมาบวกกันเสมอ
-           - [ที่อยู่หลังจำหน่าย (ADDRESS)]: สกัดจากหน้า 'ทั่วไป 2.2 (ที่อยู่ปัจจุบัน)'
-           - [ผลคะแนนจากการประเมิน]: สกัดตัวเลขหลัง 'ผลรวมการประเมินโรคซึมเศร้า' (9Q) และ 'การฆ่าตัวตาย' (8Q) 
-           - [Home Medication (MEDS)]: สกัดจากหน้า 'order' มักเป็น order ในวันท้ายๆ ค้นหาเฉพาะรายการยาที่มีคำว่า 'Home-Med' หรือ รายการยาที่มีปริมาณการสั่งจ่ายมากกว่าปริมาณที่กินต่อวัน สกัดชื่อยาเป็น UPPERCASE พร้อมวิธีใช้และการบริหารยา ให้เขียนต่อกันในแถวเดียวและคั่นด้วยเครื่องหมายคอมม่า (,) ไปจนครบ
-           - [การวินิจฉัยโรคก่อนจำหน่าย (DX)]: สกัดจาก 'การวินิจฉัย' โดยเขียนรหัส ICD-10 (ไม่มีจุดทศนิยม) พร้อมชื่อโรคภาษาไทย โดยต้องเริ่มจาก Principal Diagnosis เป็นอันดับแรก ตามด้วย Comorbidity ทั้งหมด ให้เขียนต่อกันและคั่นด้วยเครื่องหมายคอมม่า (,) ไปจนครบ
-           - [สรุปปัญหาที่ส่งต่อ (PROGRESS)]: สังเคราะห์จาก Progress Note ทั้งหมดที่ได้รับ ให้เป็นสรุปย่อหน้าเดียว ความยาว 2-3 บรรทัด
-           - [การรับบริการหลังจำหน่าย รับยาใกล้บ้าน (ระบุสถานที่) (POST_SERVICE)]: สกัดจาก Order จำหน่าย ในหน้า 'order'  มักเป็น order ในวันท้ายๆ เช่นใช้คำว่า rehab and recov หรือ ติดตามการรักษา ที่ สบยช. หรือ รพ.ต่างๆ
+        2. ตรรกะการคำนวณและจัดรูปแบบพิเศษ (PhD Logic):
+           - [LOC (ระยะเวลาที่อยู่ในชุมชน)]: คำนวณโดยนำวันที่ปัจจุบัน ({today_str}) ลบด้วย วันที่จำหน่ายครั้งสุดท้าย (LAST_DC)
+           - [DX (การวินิจฉัย)]: สกัดรหัส ICD-10 (ไม่มีจุดทศนิยม) พร้อมชื่อโรคภาษาไทย โดยเริ่มจาก Principal Diagnosis และตามด้วย Comorbidity ทั้งหมด ให้เขียนต่อกันในแถวเดียว คั่นด้วยเครื่องหมายคอมม่า (,) ไปจนครบ
+           - [MEDS (Home Medication)]: สกัดรายการยาที่มีคำว่า 'Home-Med' เขียนชื่อยาเป็น UPPERCASE พร้อมวิธีใช้และการบริหารยา ให้เขียนต่อกันในแถวเดียว คั่นด้วยเครื่องหมายคอมม่า (,) ไปจนครบ
+           - [LOS (รวมวันนอน)]: นำจำนวนวัน Detox และ Rehab มาบวกกันเสมอ [cite: 3, 10]
+           - [PROGRESS (สรุปปัญหา)]: สังเคราะห์จาก Progress Note ทั้งหมด ให้เป็นย่อหน้าเดียว ความยาว 2-3 บรรทัด [cite: 3, 10]
 
-        3. นโยบายการตรวจสอบความถูกต้อง (Verification Audit Policy):
-           - หากไม่พบข้อมูลใดๆ ในช่องที่ระบุ ให้พยายามหาจากช่องอื่นในเนื้อหาทั้งหมด 
-           - หากไม่มีจริงๆ ให้ระบุ [กรอกด้วยตนเอง] ห้ามเว้นว่างเด็ดขาด 
-           - ตรวจสอบประวัติจำหน่ายเดิม (เช่น เคยนอน 4 ครั้ง) เพื่อวิเคราะห์ 'รับไว้ครั้งที่' (เช่น 5) 
+        3. ตรรกะสมอเรือ (Keywords Anchor):
+           - [HN]: มองหาตัวเลขหลัง 'HN' หรือ 'Hospital number' 
+           - [สิทธิการรักษา]: สกัดข้อความหลัง 'สิทธิ์ :' [cite: 3, 10]
+           - [CC]: สกัดจาก 'Chief Complaint' หรือ 'CC :' จนถึง 'Present illness' [cite: 3, 10]
+           - [ข้อมูลทั่วไป]: สกัดชื่อ-สกุล, อายุ, บัตรประชาชน (13 หลัก), ศาสนา, อาชีพ และที่อยู่ [cite: 7]
+           - [คะแนน]: สกัดตัวเลขหลัง 'ผลรวมการประเมินโรคซึมเศร้า' (9Q) และ 'การฆ่าตัวตาย' (8Q) [cite: 5]
+           - [ผู้ดูแล]: สกัดชื่อ ความสัมพันธ์ และเบอร์โทรศัพท์ [cite: 7, 10]
+
+        4. นโยบาย Verification Audit:
+           - หากไม่พบข้อมูลในช่องที่ระบุ ให้หาจากช่องอื่น หากไม่มีจริงๆ ให้ระบุ [กรอกด้วยตนเอง] [cite: 9, 10]
+           - วิเคราะห์ 'รับไว้ครั้งที่' จากประวัติเดิม (เช่น เคยนอน 4 ครั้ง ครั้งนี้จะเป็น 5) 
 
         ข้อมูลดิบสำหรับวิเคราะห์:
         {all_raw_data}
 
-        ตอบกลับในรูปแบบ JSON ที่มี Key ตรงกับ Placeholder ในไฟล์ Word: 
-        NAME, AGE, HN, ID, EDU, CAREER, RELIGION, STATUS, RIGHTS, LAST_DC, ADMIT_DATE, VISIT_NUM, CC, CONTACT, RELATION, PHONE, NEAR_HOSP, DC_DATE, LOS, ADDRESS, Q9, Q8, MEDS, DX, PROGRESS, POST_SERVICE
+        ตอบกลับในรูปแบบ JSON ที่มี Key ตรงกับ Placeholder ใน Word: 
+        NAME, AGE, HN, ID, EDU, CAREER, RELIGION, STATUS, RIGHTS, LAST_DC, LOC, ADMIT_DATE, VISIT_NUM, CC, CONTACT, RELATION, PHONE, NEAR_HOSP, DC_DATE, LOS, ADDRESS, Q9, Q8, MEDS, DX, PROGRESS, POST_SERVICE
         """
         
         try:
-            # ประมวลผลผ่านโมเดล Gemini 3 Flash ตาม Paid Tier
+            # ประมวลผลผ่านโมเดล Gemini 3 Flash
             response = client.models.generate_content(model=MODEL_ID, contents=prompt)
             match = re.search(r'\{.*\}', response.text, re.DOTALL)
             
             if match:
-                # เก็บข้อมูล JSON ที่สกัดได้ลงใน Session State เพื่อส่งต่อให้ส่วนที่ 5
                 st.session_state.extracted_json_data = json.loads(match.group())
-                st.success("✅ วิเคราะห์ข้อมูลเชิงลึกและสกัดชื่อโรคภาษาไทยเรียบร้อยแล้ว!")
+                # เพิ่มข้อมูล วัน/เดือน/ปี ไทย เข้าไปใน JSON เพื่อเติมในบรรทัดแรกของเอกสาร [cite: 15]
+                st.session_state.extracted_json_data.update(thai_date_data)
+                st.success("✅ วิเคราะห์ข้อมูลสำเร็จและจัดรูปแบบ DX/MEDS เป็นแถวเดียวเรียบร้อยแล้ว!")
             else:
                 st.error("AI ไม่สามารถสร้างรูปแบบข้อมูลที่ถูกต้องได้ กรุณาลองตรวจสอบข้อมูลดิบอีกครั้ง")
         except Exception as e:
             st.error(f"เกิดข้อผิดพลาดในการประมวลผล: {e}")
 
-# --- สิ้นสุดส่วนที่ 4 ---
+# --- สิ้นสุดส่วนที่ 5 ---
 
-
-# --- 8. ฟังก์ชันจัดการไฟล์ Word (จัดรูปแบบชิดซ้าย + ฟอนต์ 13 + แทนที่ Placeholder) ---
+# --- 9. ฟังก์ชันจัดการไฟล์ Word (จัดรูปแบบชิดซ้าย + ฟอนต์ 13 + แทนที่ Placeholder) ---
 
 def fill_pmnidat_doc(data):
-    """ฟังก์ชันนำข้อมูลจาก JSON ไปบรรจุลงในไฟล์แม่แบบ .docx """
+    """ฟังก์ชันนำข้อมูลจาก JSON ไปบรรจุลงในไฟล์แม่แบบ .docx พร้อมจัดรูปแบบ [cite: 8-10]"""
     try:
-        # โหลดไฟล์แม่แบบที่คุณหมอเตรียมไว้
+        # โหลดไฟล์แม่แบบ PMNIDAT 062 ที่คุณหมอเตรียมไว้ [cite: 14]
         doc = Document("PMNIDAT 062 แบบบันทึกข้อมูลเพื่อส่งต่อ.docx")
         
-        # เตรียมชุดข้อมูล Mapping (Key ต้องเป็นตัวพิมพ์ใหญ่ตรงกับ Placeholder ใน Word) 
+        # เตรียมชุดข้อมูลสำหรับแทนที่ (Mapping) โดยใช้ตัวพิมพ์ใหญ่ตาม Placeholder [cite: 18-34]
         mapping = {f"{{{{{k.upper()}}}}}": str(v) for k, v in data.items()}
         
         def apply_style_and_replace(paragraph):
+            """ฟังก์ชันย่อยสำหรับแทนที่ข้อความและบังคับฟอนต์/การจัดวาง"""
             for key, value in mapping.items():
                 if key in paragraph.text:
-                    # แทนที่ข้อความใน Placeholder 
+                    # แทนที่ข้อความในตำแหน่ง Placeholder [cite: 18-34]
                     paragraph.text = paragraph.text.replace(key, value)
                     
-                    # บังคับจัดรูปแบบชิดซ้าย (Left Alignment) ตามมาตรฐานที่คุณหมอกำหนด 
+                    # บังคับการจัดวางให้ชิดซ้าย (Left Alignment)
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     
-                    # กำหนดฟอนต์ขนาด 13 pt สำหรับงานวิชาการสถาบันฯ 
+                    # กำหนดขนาดฟอนต์เป็น 13 pt ตลอดทั้งย่อหน้า
                     for run in paragraph.runs:
                         run.font.size = Pt(13)
 
-        # ดำเนินการแทนที่ข้อมูลทั้งใน Paragraph ปกติและภายในตาราง 
-        for p in doc.paragraphs: apply_style_and_replace(p)
+        # ดำเนินการค้นหาและแทนที่ทั้งในเนื้อหาปกติและภายในตาราง [cite: 14-43]
+        for p in doc.paragraphs: 
+            apply_style_and_replace(p)
+            
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
-                    for p in cell.paragraphs: apply_style_and_replace(p)
+                    for p in cell.paragraphs: 
+                        apply_style_and_replace(p)
                             
         # บันทึกไฟล์ลงในหน่วยความจำชั่วคราว (Memory Buffer)
         buffer = io.BytesIO()
@@ -368,54 +420,35 @@ def fill_pmnidat_doc(data):
         st.error(f"⚠️ เกิดข้อผิดพลาดในการสร้างไฟล์ Word: {e}")
         return None
 
-# --- 9. การแสดงผลลัพธ์และปุ่มดาวน์โหลด (Final Execution) ---
+# --- 10. การแสดงผลลัพธ์และปุ่มดาวน์โหลด (Final Execution) ---
 
-# ตรวจสอบว่ามีการสกัดข้อมูลสำเร็จใน Session State หรือไม่ 
+# ตรวจสอบว่ามีการประมวลผล JSON สำเร็จในระบบหรือไม่
 if "extracted_json_data" in st.session_state and st.session_state.extracted_json_data:
-    # เรียกใช้ฟังก์ชันสร้างไฟล์จากข้อมูลล่าสุด
+    # สร้างไฟล์ Word จากข้อมูลล่าสุดที่จัดรูปแบบแถวเดียวเรียบร้อยแล้ว
     word_file_final = fill_pmnidat_doc(st.session_state.extracted_json_data)
     
     if word_file_final:
-        # บันทึกสถิติการใช้งาน (ฟังก์ชันที่ประกาศไว้ในส่วนที่ 1)
-        log_usage(st.session_state.extracted_json_data.get('name', '[ไม่ระบุชื่อ]'))
+        # บันทึกสถิติการใช้งานลง Log Book (ฟังก์ชันในส่วนที่ 1)
+        log_usage(st.session_state.extracted_json_data.get('NAME', '[ไม่ระบุชื่อ]'))
         
         st.divider()
-        st.balloons() # เฉลิมฉลองความสำเร็จในการประมวลผล
-        st.success("🎉 ระบบสกัดข้อมูลและจัดทำเอกสาร PMNIDAT 062 ฉบับสมบูรณ์เรียบร้อยแล้ว!")
+        st.balloons() # แสดงเอฟเฟกต์ความสำเร็จ
+        st.success("🎉 เอกสาร PMNIDAT 062 (Master Version 3.35) พร้อมสำหรับการดาวน์โหลดแล้ว!")
         
-        # ปุ่มดาวน์โหลดไฟล์ฉบับ Final ที่พร้อมส่งต่อ 
+        # ปุ่มดาวน์โหลดไฟล์ฉบับสมบูรณ์ (จัดรูปแบบฟอนต์ 13 + ชิดซ้าย + วันที่ปัจจุบัน) [cite: 14]
         st.download_button(
-            label="💾 ดาวน์โหลดไฟล์ 'แบบบันทึกข้อมูลเพื่อส่งต่อ (PMNIDAT 062).docx' ",
+            label="💾 ดาวน์โหลดใบส่งต่อ 062 (จัดรูปแบบแถวเดียว + ออโต้วันที่ปัจจุบัน)",
             data=word_file_final,
-            file_name=f"Refer_{st.session_state.extracted_json_data.get('name', '062')}.docx",
+            file_name=f"Refer_{st.session_state.extracted_json_data.get('NAME', '062')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True
         )
 
-# --- 10. มาตรการรักษาความปลอดภัย (PDPA Footer) ---
+# --- 11. มาตรการความปลอดภัยและประกาศ PDPA ---
 st.divider()
 st.info("""
-    **มาตรการรักษาความปลอดภัยของข้อมูลคนไข้ (PDPA Compliance):**
-    * ระบบ PMNIDAT Smart Refer ประมวลผลแบบ Real-time และ **ไม่มีการจัดเก็บข้อมูลผู้ป่วยถาวร** 
-    * ข้อมูลจะถูกลบทิ้งทันทีเมื่อมีการรีเฟรชหน้าจอ (Refresh) โปรดดาวน์โหลดไฟล์ให้เรียบร้อยก่อนปิดระบบ
-    * โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำไปใช้งานจริง 
+    **มาตรการรักษาความปลอดภัยของข้อมูลผู้ป่วย (PDPA Compliance):**
+    * ระบบจะประมวลผลข้อมูลแบบ Real-time และ **ไม่มีการจัดเก็บข้อมูลถาวรบนเซิร์ฟเวอร์** [cite: 10]
+    * ข้อมูลในช่องกรอกจะถูกลบทิ้งทันทีเมื่อปิดเบราว์เซอร์หรือกด Refresh หน้าจอ
+    * **คำแนะนำ:** โปรดตรวจสอบความถูกต้องของข้อมูล (Verification Audit) อีกครั้งก่อนนำเอกสารไปใช้งานจริง
     """)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

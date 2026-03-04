@@ -1,4 +1,4 @@
-streamlit
-google-generativeai
+streamlit==1.55.0
+google-genai
 python-docx
 requests

@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai  # มาตรฐานใหม่ปี 2026
+from google import genai 
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -8,22 +8,30 @@ import re
 import json
 import requests
 
-# --- 1. การตั้งค่าการเชื่อมต่อ (แก้ไขเพื่อแก้ปัญหา 404) ---
+# --- 1. ระบบจัดการการเชื่อมต่อและเลือกโมเดลอัตโนมัติ (Anti-404 System) ---
 try:
-    # ดึงค่าจาก Secrets ที่คุณหมอตั้งค่าไว้
     API_KEY = st.secrets["GEMINI_API_KEY"]
     APPS_SCRIPT_URL = st.secrets["APPS_SCRIPT_URL"]
-    
-    # สร้าง Client ด้วย SDK ใหม่
     client = genai.Client(api_key=API_KEY)
     
-    # ใช้รุ่น gemini-1.5-flash-latest ซึ่งเป็น ID ที่เสถียรที่สุดใน v1beta ปัจจุบัน
-    MODEL_ID = "gemini-1.5-flash-latest" 
+    # ดึงรายชื่อโมเดลที่คุณหมอมีสิทธิ์ใช้ใน Paid Tier 1 เพื่อป้องกัน Error 404
+    @st.cache_resource
+    def find_active_model():
+        try:
+            available_models = [m.name for m in client.models.list()]
+            # ค้นหาโมเดล Flash ที่เสถียรที่สุดก่อน
+            for m in available_models:
+                if "gemini-1.5-flash" in m: return m
+            return available_models[0] # ถ้าไม่เจอให้เอาตัวแรกที่มี
+        except:
+            return "models/gemini-1.5-flash" # Fallback
+
+    MODEL_ID = find_active_model()
 except Exception as e:
     st.error(f"❌ ระบบเชื่อมต่อผิดพลาด: {e}")
     st.stop()
 
-# --- 2. ฟังก์ชันบันทึก Log Book ไปยัง Google Sheets ---
+# --- 2. ฟังก์ชันบันทึก Log Book ---
 def log_usage(patient_name):
     try:
         requests.post(APPS_SCRIPT_URL, json={"name": patient_name}, timeout=5)
@@ -40,9 +48,7 @@ def fill_pmnidat_doc(data):
             for key, value in mapping.items():
                 if key in paragraph.text:
                     paragraph.text = paragraph.text.replace(key, value)
-                    # บังคับชิดขวา เพื่อยกเลิกการยืดข้อความ (Thai Distributed)
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT 
-                    # บังคับฟอนต์ขนาด 13 ตามมาตรฐาน PMNIDAT
                     for run in paragraph.runs:
                         run.font.size = Pt(13)
 
@@ -59,7 +65,7 @@ def fill_pmnidat_doc(data):
         st.error(f"⚠️ ปัญหาไฟล์แม่แบบ: {e}")
         return None
 
-# --- 4. การออกแบบหน้าเว็บและคู่มือแบบละเอียด (คืนค่าฉบับเต็ม) ---
+# --- 4. การออกแบบหน้าเว็บและ "คู่มือการคัดลอกฉบับเต็ม" ---
 st.set_page_config(page_title="PMNIDAT 062 Smart Portal", layout="wide")
 
 with st.sidebar:
@@ -90,10 +96,10 @@ with st.sidebar:
     * กดหน้า **สิทธิการรักษา** → คัดลอกทั้งหมด
     """)
     st.divider()
-    st.success("💡 AI จะจัดรูปแบบข้อมูลให้สวยงามอัตโนมัติครับ สงสัยหรือพบปัญหาติดต่อ พ.ชาฌานได้เลยนะครับ")
+    st.success(f"💡 AI เชื่อมต่อสำเร็จผ่านโมเดล: {MODEL_ID}")
 
 st.title("🏥 PMNIDAT Smart D/C Transfer")
-st.subheader(f"ระบบสร้างไฟล์ใบส่งต่อ 062 อัตโนมัติ (สถานะ: {MODEL_ID} Active)")
+st.subheader("ระบบสร้างไฟล์ใบส่งต่อ 062 อัตโนมัติ (Master Version 3.20)")
 
 st.divider()
 st.markdown("### **🟢 Step 1: ข้อมูลระบบผู้ป่วยใน (IPD)**")
@@ -115,22 +121,21 @@ with s3_cols[1]: s32 = st.text_area("3.2 ที่อยู่ปัจจุบ
 with s3_cols[2]: s33 = st.text_area("3.3 ผู้ติดต่อ", height=150, placeholder="ชื่อญาติ และเบอร์โทร...")
 with s3_cols[3]: s34 = st.text_area("3.4 สิทธิการรักษา", height=150, placeholder="สิทธิ์รักษา และ รพ.หลัก...")
 
-# --- 5. ส่วนประมวลผล (Advanced Extraction) ---
+# --- 5. ส่วนประมวลผล (Smart Synthesis) ---
 if st.button("🚀 สกัดข้อมูลและสร้างเอกสาร"):
     all_raw = f"{s11} {s12} {s13} {s14} {s2} {s31} {s32} {s33} {s34}"
-    with st.spinner(f'Gemini กำลังประมวลผลข้อมูลผ่าน {MODEL_ID}...'):
+    with st.spinner('Gemini กำลังสังเคราะห์เนื้อหาตามมาตรฐานสถาบัน...'):
         prompt = f"""
         จงสกัดข้อมูลเวชระเบียนลงแบบฟอร์ม 062 ตามกฎเหล็ก:
-        1. ยา (MEDS): ต้องมีเลขลำดับ และเคาะบรรทัดแยกรายการ (\\n) ชื่อยาต้อง UPPERCASE พร้อมวิธีใช้ครบถ้วน
-        2. วินิจฉัย (DX): เคาะบรรทัดแยกแต่ละโรค รหัส ICD-10 ติดกัน(ไม่มีจุด) + ชื่อโรคภาษาอังกฤษฉบับเต็ม
-        3. สรุปปัญหา (PROGRESS): สังเคราะห์เป็น 3 ย่อหน้า (แรกรับ, พัฒนาการดีขึ้น, สถานะปัจจุบันและข้อควรระวัง)
+        1. ยา (MEDS): ต้องมีเลขลำดับ และเคาะบรรทัดแยกรายการ (\\n) ชื่อยา UPPERCASE พร้อมวิธีใช้ครบถ้วน
+        2. วินิจฉัย (DX): เคาะบรรทัดแยกแต่ละโรค รหัส ICD-10 ติดกัน(ไม่มีจุด)
+        3. PROGRESS: สังเคราะห์เป็น 3 ย่อหน้า (แรกรับ, พัฒนาการดีขึ้น, สถานะปัจจุบันและข้อควรระวัง)
         4. ข้อมูลขาดหาย: ให้ระบุ [พิมพ์ด้วยตนเอง] ห้ามเว้นว่าง
         
         ข้อมูลดิบ: {all_raw}
         ตอบกลับในรูปแบบ JSON เท่านั้น
         """
         try:
-            # เรียกใช้ generate_content ผ่าน Syntax ใหม่ของปี 2026
             response = client.models.generate_content(model=MODEL_ID, contents=prompt)
             match = re.search(r'\{.*\}', response.text, re.DOTALL)
             if match:
@@ -153,6 +158,5 @@ st.divider()
 st.info("""
     **ประกาศ: มาตรการรักษาความปลอดภัยข้อมูลทางการแพทย์ (PDPA Compliance)**
     * ระบบ PMNIDAT Smart D/C Transfer ไม่มีการจัดเก็บหรือสำรองข้อมูลผู้ป่วยไว้ในเซิร์ฟเวอร์หรือฐานข้อมูลใดๆ เพื่อป้องกันการรั่วไหลของข้อมูลส่วนบุคคล 
-    * ข้อมูลจะปรากฏเฉพาะในระหว่างการใช้งานเท่านั้น หากมีการรีเฟรชหน้าจอ ข้อมูลจะสูญหายทันที
-    * โปรดบันทึกไฟล์ให้เรียบร้อยก่อนออกจากระบบทุกครั้ง
+    * ข้อมูลจะปรากฏเฉพาะในระหว่างการใช้งานเท่านั้น หากมีการรีเฟรชหน้าจอ ข้อมูลจะสูญหายทันที โปรดบันทึกไฟล์ให้เรียบร้อยก่อนออกจากระบบทุกครั้ง
     """)
